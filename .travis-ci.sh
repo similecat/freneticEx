@@ -1,4 +1,4 @@
-OPAM_DEPENDS="lwt cstruct ocamlgraph ounit pa_ounit quickcheck"
+OPAM_DEPENDS="lwt ounit pa_ounit quickcheck"
 
 case "$OCAML_VERSION,$OPAM_VERSION" in
 3.12.1,1.0.0) ppa=avsm/ocaml312+opam10 ;;
@@ -33,7 +33,6 @@ function github_install {
          ocaml setup.ml -configure ${@:2} && make && make install)
 }
 
-github_install ocaml-packet
 github_install ocaml-openflow --enable-lwt
 github_install ocaml-topology
 github_install dprle

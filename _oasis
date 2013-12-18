@@ -24,17 +24,14 @@ Flag quickcheck
 Library netcore
   Path: lib
   BuildDepends:
-    cstruct,
     dprle,
     lwt,
     lwt.syntax,
     lwt.syntax.log,
     lwt.unix,
     str,
-    ocamlgraph,
     openflow,
     openflow.lwt,
-    packet,
     topology
   InternalModules:
     Types,
@@ -66,7 +63,7 @@ Executable testtool
   Path: test
   MainIs: Test.ml
   BuildDepends: 
-    oUnit,packet,
+    oUnit,
     netcore,
     pa_ounit,
     pa_ounit.syntax,
