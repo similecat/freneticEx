@@ -26,7 +26,8 @@ let tags = [("openflow", "controller")]
 
 type t = {
   ctl : Controller.t;
-  mutable locals : LocalCompiler.t SwitchMap.t
+  mutable locals : LocalCompiler.t SwitchMap.t;
+  mutable tables : SDN_Types.flowTable SwitchMap.t
 }
 
 let bytes_to_headers port_id (bytes : Cstruct.t) =
@@ -186,44 +187,58 @@ let to_event (t : t) evt =
           return []
       end
 
-let update_table_for (t : t) (sw_id : switchId) pol =
+let naive_update_for (t:t) sw_id local table : unit Deferred.t =
+  let c_id = Controller.client_id_of_switch t.ctl sw_id in
   let delete_flows =
     OpenFlow0x01.Message.FlowModMsg OpenFlow0x01_Core.delete_all_flows in
   let to_flow_mod prio flow =
     OpenFlow0x01.Message.FlowModMsg (SDN_OpenFlow0x01.from_flow prio flow) in
-  let c_id = Controller.client_id_of_switch t.ctl sw_id in
-  let local = LocalCompiler.of_policy sw_id pol in
-  t.locals <- SwitchMap.add t.locals sw_id local;
-  send t.ctl c_id (0l, delete_flows) >>= fun _ ->
   let priority = ref 65536 in
-  let table = LocalCompiler.to_table local in
-  Deferred.ignore (Deferred.List.map table ~f:(fun flow ->
+  t.locals <- SwitchMap.add t.locals sw_id local;
+  t.tables <- SwitchMap.add t.tables sw_id table;
+  send t.ctl c_id (0l, delete_flows) >>= fun _ ->
+  Deferred.List.iter table (fun flow ->
     decr priority;
-    send t.ctl c_id (0l, to_flow_mod !priority flow)))
+    send t.ctl c_id (0l, to_flow_mod !priority flow))
+
+let naive_update (t:t) compiled : unit Deferred.t =
+  let open Deferred in
+  ignore (List.map compiled ~f:fun (sw_id,local,table) ->
+    naive_update_for t sw_id local table)
+
+let compile_table_for (sw_id : switchId) (pol:NetKAT_Types.policy)  =
+  let local = LocalCompiler.of_policy sw_id pol in
+  let table = LocalCompiler.to_table local in
+  (sw_id, local, table)
 
 let handler (t : t) app =
   let app' = Async_NetKAT.run app in
   fun e ->
-    let open Deferred in
     let nib = Controller.nib t.ctl in
     app' nib e >>= fun (packet_outs, m_pol) ->
-    let outs = List.map packet_outs ~f:(fun ((sw_id,_,_,_,_) as po) ->
+    let outs = Deferred.List.map packet_outs ~f:(fun ((sw_id,_,_,_,_) as po) ->
       (* XXX(seliopou): xid *)
       let c_id = Controller.client_id_of_switch t.ctl sw_id in
       send t.ctl c_id (0l, packet_out_to_message po)) in
     let pols = match m_pol with
       | Some (pol) ->
-        ignore (List.map ~how:`Parallel (Topology.get_switchids nib) ~f:(fun sw_id ->
-          update_table_for t sw_id pol))
+        (* TODO(seliopou): turn this List.map into a Deferred.List.map
+           if yielding is important? *)
+        let compiled =
+          List.map (Topology.get_switchids nib)
+            ~f:(fun sw_id -> compile_table_for sw_id pol) in
+        naive_update t compiled
       | None ->
         let open NetKAT_Types in
-        begin match e with
-          | SwitchUp sw_id ->
-            update_table_for t sw_id (Async_NetKAT.default app)
+            begin match e with
+              | SwitchUp sw_id ->
+                let _,local,table = compile_table_for sw_id (Async_NetKAT.default app) in
+                naive_update_for t sw_id local table
+          (* XXX(seliopou): handle SwitchDown here? *)
           | _ -> return ()
         end in
-    ignore outs >>= fun _ ->
-    ignore pols
+    Deferred.ignore outs >>= fun _ ->
+    Deferred.ignore pols
 
 let start app ?(port=6633) () =
   let open Async_OpenFlow.Platform.Trans in
@@ -234,6 +249,6 @@ let start app ?(port=6633) () =
 
   Controller.create ~max_pending_connections ~port ()
   >>> fun t ->
-    let t' = { ctl = t; locals = SwitchMap.empty } in
+    let t' = { ctl = t; locals = SwitchMap.empty; tables = SwitchMap.empty } in
     let events = run stages t' (Controller.listen t) in
     Deferred.don't_wait_for (Pipe.iter events ~f:(handler t' app))
