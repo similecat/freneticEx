@@ -166,12 +166,12 @@ let to_event (t : t) evt =
                  * exposed to the application?
                  * *)
                 let pis, phys = LocalCompiler.eval local packet in
-                let outs = Deferred.List.map phys ~f:(fun packet1 ->
+                let outs = Deferred.List.iter phys ~f:(fun packet1 ->
                   let acts = headers_to_actions pi.port
                     (Headers.diff packet1.headers packet.headers) in
                   let po = (switch_id, bytes, buf_id, Some(port_id), acts) in
                   send t.ctl c_id (0l, packet_out_to_message po)) in
-                Deferred.ignore outs >>= fun _ ->
+                outs >>= fun _ ->
                 return (List.map pis ~f:(fun (p, pkt) ->
                   let pkt', changed = packet_sync_headers pkt in
                   if changed then
@@ -203,8 +203,8 @@ let naive_update_for (t:t) sw_id local table : unit Deferred.t =
 
 let naive_update (t:t) compiled : unit Deferred.t =
   let open Deferred in
-  ignore (List.map compiled ~f:fun (sw_id,local,table) ->
-    naive_update_for t sw_id local table)
+  List.iter compiled ~f:fun (sw_id,local,table) ->
+    naive_update_for t sw_id local table
 
 let compile_table_for (sw_id : switchId) (pol:NetKAT_Types.policy)  =
   let local = LocalCompiler.of_policy sw_id pol in
@@ -216,7 +216,7 @@ let handler (t : t) app =
   fun e ->
     let nib = Controller.nib t.ctl in
     app' nib e >>= fun (packet_outs, m_pol) ->
-    let outs = Deferred.List.map packet_outs ~f:(fun ((sw_id,_,_,_,_) as po) ->
+    let outs = Deferred.List.iter packet_outs ~f:(fun ((sw_id,_,_,_,_) as po) ->
       (* XXX(seliopou): xid *)
       let c_id = Controller.client_id_of_switch t.ctl sw_id in
       send t.ctl c_id (0l, packet_out_to_message po)) in
@@ -237,8 +237,8 @@ let handler (t : t) app =
           (* XXX(seliopou): handle SwitchDown here? *)
           | _ -> return ()
         end in
-    Deferred.ignore outs >>= fun _ ->
-    Deferred.ignore pols
+    outs >>= fun _ ->
+    pols
 
 let start app ?(port=6633) () =
   let open Async_OpenFlow.Platform.Trans in
