@@ -764,6 +764,39 @@ module Local = struct
     loop pol (fun p -> p)
 end
 
+module Dag = struct
+    module keySet = Set.Make( Pattern.t );
+    module valMap = Map.Make( Pattern.t );
+    
+    let insert (pattern,action) =
+	(*
+	for each (pattern,action) in valMap:
+		if(pattern^pattern(i) != 0)
+			pattern -= pattern(i);
+			add edge (pattern,pattern(i));
+	*)
+	valMap.add pattern action in
+end
+
+module LocalExtend = struct
+    
+    let rec of_pred (pr:NetKAT_Types.pred) : t=
+        let rec loop pr k = 
+            match pr with
+                | NetKAT_Types.True ->(
+                Dag.insert (Pattern.any,Action.id);; 
+                k (Pattern.Map.singleton Pattern.any Action.id)
+                )
+        loop pr (fun x -> x)
+
+    let of_policy (pol:NetKAT_Types.policy) : t =
+        let rec loop pol k = 
+            match pol with
+                | NetKAT_Types.Filter pr ->
+                  k (of_pred pr)
+    loop pol (fun p -> p)
+end
+
 module RunTime = struct
 
   let to_action (a:Action.t) (pto: fieldVal option) : seq =
