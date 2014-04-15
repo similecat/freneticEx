@@ -578,6 +578,7 @@ module Local = struct
         Pattern.Map.add m x s
       | Some s' ->
         Pattern.Map.add m x (Action.Set.union s s') in
+    (*Printf.printf "EXTEND %s\n" "###########";*)
     (* Printf.printf "EXTEND\nM=%s\nX=%s\nS=%s\nR=%s\n" *)
     (*   (to_string m)  *)
     (*   (Pattern.to_string x) *)
@@ -601,10 +602,10 @@ module Local = struct
 
   let par p q =
     let r = intersect Action.Set.union p q in
-    (* Printf.printf "### PAR ###\n%s\n%s\n%s" *)
-    (*   (to_string p) *)
-    (*   (to_string q) *)
-    (*   (to_string r); *)
+     Printf.printf "### PAR ###\n%s\n%s\n%s" 
+       (to_string p) 
+       (to_string q) 
+       (to_string r); 
     r
 
   let seq (p:t) (q:t) : t =
@@ -640,10 +641,10 @@ module Local = struct
         ~f:(fun ~key:r1 ~data:s1 acc ->
           let acc' = seq_atom_acts_local r1 s1 q in
           Pattern.Map.merge ~f:merge acc acc') in
-    (* Printf.printf "### SEQ ###\n%s\n%s\n%s" *)
-    (*   (to_string p) *)
-    (*   (to_string q) *)
-    (*   (to_string r); *)
+     Printf.printf "### SEQ ###\n%s\n%s\n%s" 
+       (to_string p) 
+       (to_string q) 
+       (to_string r); 
     r
 
   let neg (p:t) : t=
@@ -653,9 +654,9 @@ module Local = struct
           if Action.is_drop s then Action.id
           else if Action.is_id s then Action.drop
           else failwith "neg: not a predicate") in
-    (* Printf.printf "### NEGATE ###\n%s\n%s" *)
-    (*   (to_string p) *)
-    (*   (to_string r); *)
+     Printf.printf "### NEGATE ###\n%s\n%s" 
+       (to_string p) 
+       (to_string r); 
     r
 
   let star (p:t) : t =
@@ -717,6 +718,7 @@ module Local = struct
           loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (seq p1 p2)))
         | NetKAT_Types.Or (pr1, pr2) ->
           loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (par p1 p2))) in
+    Printf.printf "%s %s\n" "**********" "###########"; 
     loop pr (fun x -> x)
 
   let of_policy (pol:NetKAT_Types.policy) : t =
@@ -761,6 +763,23 @@ module Local = struct
           loop pol (fun p -> k (star p))
         | NetKAT_Types.Link(sw,pt,sw',pt') ->
 	  failwith "Not a local policy" in
+    let print pol = 
+      match pol with
+        | NetKAT_Types.Filter pr ->
+		Printf.printf "%sNetKAT_Types.Filter" "###"
+        | NetKAT_Types.Mod hv ->
+		Printf.printf "%sNetKAT_Types.Mod" "###"
+        | NetKAT_Types.Union (pol1, pol2) ->
+		Printf.printf "%sNetKAT_Types.Union" "###"
+        | NetKAT_Types.Seq (pol1, pol2) ->
+		Printf.printf "%sNetKAT_Types.Seq" "###"
+        | NetKAT_Types.Star pol ->
+		Printf.printf "%sNetKAT_Types.Star" "###"
+        | NetKAT_Types.Link(sw,pt,sw',pt') ->
+		Printf.printf "%sNetKAT_Types.Link" "###"
+    in
+    print pol;
+    Printf.printf "\n";
     loop pol (fun p -> p)
 end
 
@@ -894,7 +913,26 @@ module RunTime = struct
 
   let compile (sw:switchId) (pol:NetKAT_Types.policy) : i =
     let pol' = Optimize.specialize_policy sw pol in
-    Local.of_policy pol'
+    let print pol = 
+      match pol with
+        | NetKAT_Types.Filter pr ->
+		Printf.printf "%sNetKAT_Types.Filter\n" "###"
+        | NetKAT_Types.Mod hv ->
+		Printf.printf "%sNetKAT_Types.Mod\n" "###"
+        | NetKAT_Types.Union (pol1, pol2) ->
+		Printf.printf "%sNetKAT_Types.Union\n" "###"
+        | NetKAT_Types.Seq (pol1, pol2) ->
+		Printf.printf "%sNetKAT_Types.Seq\n" "###"
+        | NetKAT_Types.Star pol ->
+		Printf.printf "%sNetKAT_Types.Star\n" "###"
+        | NetKAT_Types.Link(sw,pt,sw',pt') ->
+		Printf.printf "%sNetKAT_Types.Link\n" "###"
+    in
+	Printf.printf "%shello***********************************************************************************\n*" "ST ";
+	Printf.printf "%shello***********************************************************************************\n*" "Test ";
+	print pol;
+	Local.of_policy pol'
+	
 
   let dep_compare (x1,s1) (x2,s2) : int =
     let pc = Pattern.compare x1 x2 in
