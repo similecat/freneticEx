@@ -763,7 +763,7 @@ module Local = struct
 	  failwith "Not a local policy" in
     loop pol (fun p -> p)
 end
-
+(*
 module Dag = struct
     module keySet = Set.Make( Pattern.t );
     module valMap = Map.Make( Pattern.t );
@@ -777,23 +777,254 @@ module Dag = struct
 	*)
 	valMap.add pattern action in
 end
+*)
+
+module Dag =
+struct 
+	open Ocamlgraph;
+	module Map = Map.Make(int,int);(*mapping from patterns to int, which is the number of vertices*)
+	module Edge = Map.Make(int,int);(*Edges, mapping from vertices to vertices*)
+	let graph = Ocamlgraph.
+	(*sequential*)
+	let seq_compose p q : t =
+		(*	TODO: Dag's sequential composition!
+			1. composition;
+			2. trans result dag to type Local.t;
+			3. insert result dag into Composer.Dags;
+			4. return dag in type Local.t
+		*)
+		in
+	(*parallel*)
+	let seq_compose p q : t=
+		(*	TODO: Dag's parallel composition!
+			1. composition;
+			2. trans result dag to type Local.t;
+			3. insert result dag into Composer.Dags;
+			4. return dag in type Local.t
+		*)
+		in
+	
+end
+
+module Composer = struct
+	module Dags = Map.Make(LocalExtend.t, Dag);
+   
+	(*sequential*)
+	let seq_compose p q : t = 
+		seq_dag_compose (Dags.sigleton p) (Dags.sigleton q) in
+	let seq_dag_compose p q =
+		Dag.seq_compose p q in
+	(*parallel*)
+	let par_compose p q : t = 
+		par_dag_compose (Dags.sigleton p) (Dags.sigleton q) in
+	let par_dag_compose p q =
+		Dag.par_compose p q in
+(*	
+    let insert (pattern,action) =
+	(*
+	for each (pattern,action) in valMap:
+		if(pattern^pattern(i) != 0)
+			pattern -= pattern(i);
+			add edge (pattern,pattern(i));
+	*)
+	valMap.add pattern action in
+*)
+end
 
 module LocalExtend = struct
-    
-    let rec of_pred (pr:NetKAT_Types.pred) : t=
-        let rec loop pr k = 
-            match pr with
-                | NetKAT_Types.True ->(
-                Dag.insert (Pattern.any,Action.id);; 
-                k (Pattern.Map.singleton Pattern.any Action.id)
-                )
-        loop pr (fun x -> x)
 
-    let of_policy (pol:NetKAT_Types.policy) : t =
-        let rec loop pol k = 
-            match pol with
-                | NetKAT_Types.Filter pr ->
-                  k (of_pred pr)
+  (* TODO(arjun): Why Action.Set.t? Don't we want to know that each
+     action affects a distinct field? Shouldn't this be Action.Map.t? *)
+  type t = Action.Set.t Pattern.Map.t
+
+  let rule_to_netkat p a : NetKAT_Types.policy =
+    let open NetKAT_Types in
+    Optimize.mk_seq (Filter (Pattern.to_netkat_pred p)) (Action.set_to_netkat a)
+
+  let to_netkat (t:t) : NetKAT_Types.policy =
+    let open NetKAT_Types in
+    Pattern.Map.fold t
+      ~init:drop
+      ~f:(fun ~key ~data acc -> Optimize.mk_union acc (rule_to_netkat key data))
+
+  let compare p q =
+    Pattern.Map.compare Action.Set.compare p q
+
+  let to_string (m:t) : string =
+    Printf.sprintf "%s"
+      (Pattern.Map.fold m
+         ~init:""
+         ~f:(fun ~key:r ~data:g acc ->
+           Printf.sprintf "%s(%s) => %s\n"
+             acc
+             (Pattern.to_string r)
+             (Action.set_to_string g)))
+
+  let extend (x:Pattern.t) (s:Action.Set.t) (m:t) : t =
+    let r = match Pattern.Map.find m x with
+      | None ->
+        Pattern.Map.add m x s
+      | Some s' ->
+        Pattern.Map.add m x (Action.Set.union s s') in
+    (* Printf.printf "EXTEND\nM=%s\nX=%s\nS=%s\nR=%s\n" *)
+    (*   (to_string m)  *)
+    (*   (Pattern.to_string x) *)
+    (*   (Action.set_to_string s) *)
+    (*   (to_string r); *)
+    r
+
+
+  let intersect (op:Action.Set.t -> Action.Set.t -> Action.Set.t) (p:t) (q:t) : t =
+    Pattern.Map.fold p
+      ~init:Pattern.Map.empty
+      ~f:(fun ~key:r1 ~data:s1 acc ->
+        Pattern.Map.fold q
+          ~init:acc
+          ~f:(fun ~key:r2 ~data:s2 acc ->
+            match Pattern.seq r1 r2 with
+              | None ->
+                acc
+              | Some r1_r2 ->
+                extend r1_r2 (op s1 s2) acc))
+
+  let par p q =
+    let r = 
+        Composer.par_compose p q in
+    (* Printf.printf "### PAR ###\n%s\n%s\n%s" *)
+    (*   (to_string p) *)
+    (*   (to_string q) *)
+    (*   (to_string r); *)
+    r
+
+  let seq (p:t) (q:t) : t =
+    (* TODO:Sequentail composition here.*)
+    let r =
+        Composer.seq_compose p q
+    in
+    (* TODO:Sequentail composition here.*)
+    (* Printf.printf "### SEQ ###\n%s\n%s\n%s" *)
+    (*   (to_string p) *)
+    (*   (to_string q) *)
+    (*   (to_string r); *)
+    r
+
+  let neg (p:t) : t=
+    let r =
+      Pattern.Map.map p
+        ~f:(fun s ->
+          if Action.is_drop s then Action.id
+          else if Action.is_id s then Action.drop
+          else failwith "neg: not a predicate") in
+    (* Printf.printf "### NEGATE ###\n%s\n%s" *)
+    (*   (to_string p) *)
+    (*   (to_string r); *)
+    r
+
+  let star (p:t) : t =
+    let rec loop acc pi =
+      let psucci = seq p pi in
+      let acc' = par acc psucci in
+      if compare acc acc' = 0 then
+        acc
+      else
+        loop acc' psucci in
+    let p0 = Pattern.Map.singleton Pattern.any Action.id in
+    let r = loop p0 p0 in
+    (* Printf.printf "### STAR ###\n%s\n%s" *)
+    (*   (to_string p) *)
+    (*   (to_string r); *)
+    r
+
+  let rec of_pred (pr:NetKAT_Types.pred) : t =
+    let rec loop pr k =
+      match pr with
+        | NetKAT_Types.True ->(
+            dag.insert (Pattern.any Action.id)
+	    k (Pattern.Map.singleton Pattern.any Action.id)
+	)
+        | NetKAT_Types.False ->
+          k (Pattern.Map.singleton Pattern.any Action.drop)
+        | NetKAT_Types.Neg pr ->
+          loop pr (fun (p:t) -> k (neg p))
+        | NetKAT_Types.Test hv ->
+          let x = match hv with
+            | NetKAT_Types.Switch n ->
+              failwith "Not a local policy"
+            | NetKAT_Types.Location l ->
+              Pattern.mk_location l
+            | NetKAT_Types.EthType n ->
+              Pattern.mk_ethType n
+            | NetKAT_Types.EthSrc n ->
+              Pattern.mk_ethSrc n
+            | NetKAT_Types.EthDst n ->
+              Pattern.mk_ethDst n
+            | NetKAT_Types.Vlan n ->
+              Pattern.mk_vlan n
+            | NetKAT_Types.VlanPcp n ->
+              Pattern.mk_vlanPcp n
+            | NetKAT_Types.IPProto n ->
+              Pattern.mk_ipProto n
+            | NetKAT_Types.IP4Src (n,m) ->
+              Pattern.mk_ipSrc n
+            | NetKAT_Types.IP4Dst (n,m) ->
+              Pattern.mk_ipDst n
+            | NetKAT_Types.TCPSrcPort n ->
+              Pattern.mk_tcpSrcPort n
+            | NetKAT_Types.TCPDstPort n ->
+              Pattern.mk_tcpDstPort n in
+          let m =
+            Pattern.Set.fold (Pattern.neg x)
+              ~init:(Pattern.Map.singleton x Action.id)
+              ~f:(fun acc y -> extend y Action.drop acc) in
+          k m
+        | NetKAT_Types.And (pr1, pr2) ->
+          loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (seq p1 p2)))
+        | NetKAT_Types.Or (pr1, pr2) ->
+          loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (par p1 p2))) in
+    loop pr (fun x -> x)
+
+  let of_policy (pol:NetKAT_Types.policy) : t =
+    let rec loop pol k =
+      match pol with
+        | NetKAT_Types.Filter pr ->
+          k (of_pred pr)
+        | NetKAT_Types.Mod hv ->
+          let a = match hv with
+            | NetKAT_Types.Switch n ->
+              failwith "Not a local policy"
+            | NetKAT_Types.Location l ->
+              Action.mk_location l
+            | NetKAT_Types.EthType n ->
+              Action.mk_ethType n
+            | NetKAT_Types.EthSrc n ->
+              Action.mk_ethSrc n
+            | NetKAT_Types.EthDst n ->
+              Action.mk_ethDst n
+            | NetKAT_Types.Vlan n ->
+              Action.mk_vlan n
+            | NetKAT_Types.VlanPcp n ->
+              Action.mk_vlanPcp n
+            | NetKAT_Types.IPProto n ->
+              Action.mk_ipProto n
+            | NetKAT_Types.IP4Src (n,m) ->
+              Action.mk_ipSrc n
+            | NetKAT_Types.IP4Dst (n,m) ->
+              Action.mk_ipDst n
+            | NetKAT_Types.TCPSrcPort n ->
+              Action.mk_tcpSrcPort n
+            | NetKAT_Types.TCPDstPort n ->
+              Action.mk_tcpDstPort n in
+          let s = Action.Set.singleton a in
+          let m = Pattern.Map.singleton Pattern.any s in
+          k m
+        | NetKAT_Types.Union (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (par p1 p2)))
+        | NetKAT_Types.Seq (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (seq p1 p2)))
+        | NetKAT_Types.Star pol ->
+          loop pol (fun p -> k (star p))
+        | NetKAT_Types.Link(sw,pt,sw',pt') ->
+	  failwith "Not a local policy" in
     loop pol (fun p -> p)
 end
 
@@ -927,7 +1158,9 @@ module RunTime = struct
 
   let compile (sw:switchId) (pol:NetKAT_Types.policy) : i =
     let pol' = Optimize.specialize_policy sw pol in
-    Local.of_policy pol'
+    (Printf.print pol;;
+	Local.of_policy pol'
+	)
 
   let dep_compare (x1,s1) (x2,s2) : int =
     let pc = Pattern.compare x1 x2 in
