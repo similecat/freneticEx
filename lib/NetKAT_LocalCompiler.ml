@@ -781,7 +781,7 @@ end
 
 module Dag =
 struct 
-	open Ocamlgraph;
+	open Digraph;
 	module Map = Map.Make(int,int);(*mapping from patterns to int, which is the number of vertices*)
 	module Edge = Map.Make(int,int);(*Edges, mapping from vertices to vertices*)
 	let graph = Ocamlgraph.
@@ -793,30 +793,46 @@ struct
 			3. insert result dag into Composer.Dags;
 			4. return dag in type Local.t
 		*)
-		in
+		
 	(*parallel*)
-	let seq_compose p q : t=
+	let par_compose p q : t=
 		(*	TODO: Dag's parallel composition!
 			1. composition;
 			2. trans result dag to type Local.t;
 			3. insert result dag into Composer.Dags;
 			4. return dag in type Local.t
 		*)
+		let fa = Map.Make(LocalExtend.t, LocalExtend.t)
+		type sub_type = Lefts | Rights | Boths
+		let produce_son= 
+			let son = Digraph.create in
+			(A * B)
 		in
+		let rebuild_relation = 
+			(*For each vertex in A*B, build relations from their oriegon's father*)
+			in
+		let r = 
+			rebuild_ralation produce_son fa;
+			
+		in
+		(*	
+		*)
+		r
+		
 	
 end
 
 module Composer = struct
-	module Dags = Map.Make(LocalExtend.t, Dag);
+	let dags = ref Map.Make(LocalExtend.t, Digraph.t)
    
 	(*sequential*)
 	let seq_compose p q : t = 
-		seq_dag_compose (Dags.sigleton p) (Dags.sigleton q) in
+		seq_dag_compose (Map.find !dags p) (Map.find !dags q) in
 	let seq_dag_compose p q =
 		Dag.seq_compose p q in
 	(*parallel*)
 	let par_compose p q : t = 
-		par_dag_compose (Dags.sigleton p) (Dags.sigleton q) in
+		par_dag_compose (Map.find !dags p) (Map.find !dags q) in
 	let par_dag_compose p q =
 		Dag.par_compose p q in
 (*	
