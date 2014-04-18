@@ -778,13 +778,44 @@ module Dag = struct
 	valMap.add pattern action in
 end
 *)
+(*
+module Graph = struct
+	module PatternMap = struct
+		let empty = Int.Map.empty;
+		let num = ref 0;
+		let count = num <- !num + 1;
+		let add m p = Map.add m ~key:count ~data:p;
+	end
+	let empty = ;
+	let add_edge m a b = 
+end
+*)
+class graph = 
+	type edge = {st:int;ed:int}
+	object
+		val mutable num = Composer.dag_count
+		val mutable edges = List.empty
+		val mutable m = Int.Map.empty
+		method get_num = num(*dag num*)
+		method get_m = m
+		method get_edge_num = List.length edges
+		method add_edge a b = {st:a;ed:b}::edges
+		method insert k v = k
+		(*insert patterns into a new dag.*) 
+	end
 
 module Dag =
 struct 
-	open Digraph;
-	module Map = Map.Make(int,int);(*mapping from patterns to int, which is the number of vertices*)
+	(*
+	module Map = PatternMap.empty;(*mapping from patterns to int, which is the number of vertices*)
 	module Edge = Map.Make(int,int);(*Edges, mapping from vertices to vertices*)
-	let graph = Ocamlgraph.
+	*)
+	let create p =
+		let dag = new graph in
+		Pattern.Map.iter p 
+			~f:(fun ~key:k ~data:v-> dag#insert k v);
+		Composer.dags := Map.add !Composer.dags dag#get_num dag;
+		dag  
 	(*sequential*)
 	let seq_compose p q : t =
 		(*	TODO: Dag's sequential composition!
@@ -802,13 +833,34 @@ struct
 			3. insert result dag into Composer.Dags;
 			4. return dag in type Local.t
 		*)
-		let fa = Map.Make(LocalExtend.t, LocalExtend.t)
-		type sub_type = Lefts | Rights | Boths
+		let fa = ref Map.empty;
+		type sub_type = Lefts of Local.t | Rights of Local.t| Boths of Local.t;
 		let produce_son= 
-			let son = Digraph.create in
-			(A * B)
+			let son = new graph in
+			Map.fold p#get_m
+				~init:Map.empty
+				~f(fun ~key:r1 ~data:s1 acc->
+				Map.fold q
+					~init:acc
+					~f(fun ~key:r2 ~data:s2 acc->
+					match r1 r2 with
+					|None->
+					acc
+					|Some r1_r2 ->
+					
+			(*for i = 0 to lena - 1 do
+				for j = 0 to lenb - 1 do
+					(*Map.find p.m i Map.find q.m j*)
+					let pm = Map.find p#get_m i in
+					let qm = Map.find q#get_m j in
+					let com a b =
+						match Pattern. 
+					in
+					
+				done;
+			done;*)
 		in
-		let rebuild_relation = 
+		let rebuild_relation s = 
 			(*For each vertex in A*B, build relations from their oriegon's father*)
 			in
 		let r = 
@@ -818,21 +870,25 @@ struct
 		(*	
 		*)
 		r
-		
-	
 end
 
 module Composer = struct
-	let dags = ref Map.Make(LocalExtend.t, Digraph.t)
-   
+	let dags = ref Map.empty;
+	let dag_num = ref 0;
+  	let dag_count = !(dag_num := !dag_num + 1); 
 	(*sequential*)
 	let seq_compose p q : t = 
 		seq_dag_compose (Map.find !dags p) (Map.find !dags q) in
 	let seq_dag_compose p q =
 		Dag.seq_compose p q in
 	(*parallel*)
-	let par_compose p q : t = 
-		par_dag_compose (Map.find !dags p) (Map.find !dags q) in
+	let rec par_compose p q : t = 
+		match (Map.find !dags p) (Map.find !dags q) with
+		|(None, None)->
+		|(Node, Some b)->
+		|(Some a, Node)->
+		|(Some a, Some b)->
+			par_dag_compose a b in
 	let par_dag_compose p q =
 		Dag.par_compose p q in
 (*	
