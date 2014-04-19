@@ -791,21 +791,23 @@ module Graph = struct
 end
 *)
 class graph = 
-	type edge = {st:int;ed:int}
+	type edge = {st:int;ed:int};
+	module Map = Map.Make(Pattern.t);
 	object
 		val mutable num = Composer.dag_count
 		val mutable edges = List.empty
 		val mutable m = Int.Map.empty
+		val mutable map = Pattern.Map.emtpy
 		method get_num = num(*dag num*)
 		method get_m = m
 		method get_edge_num = List.length edges
 		method add_edge a b = {st:a;ed:b}::edges
-		method insert k v = k
+		method insert k v = map <- (Pattern.Map.add map k v)
 		(*insert patterns into a new dag.*) 
 	end
 
 module Dag =
-struct 
+	struct 
 	(*
 	module Map = PatternMap.empty;(*mapping from patterns to int, which is the number of vertices*)
 	module Edge = Map.Make(int,int);(*Edges, mapping from vertices to vertices*)
@@ -817,7 +819,7 @@ struct
 		Composer.dags := Map.add !Composer.dags dag#get_num dag;
 		dag  
 	(*sequential*)
-	let seq_compose p q : t =
+	(*let seq_compose p q : t =*)
 		(*	TODO: Dag's sequential composition!
 			1. composition;
 			2. trans result dag to type Local.t;
@@ -837,17 +839,60 @@ struct
 		type sub_type = Lefts of Local.t | Rights of Local.t| Boths of Local.t;
 		let produce_son= 
 			let son = new graph in
-			Map.fold p#get_m
+			let par r1 r2 : bool= 
+				match Pattern.seq r1 r2 with
+					|None -> false
+					|Some x -> true
+				in
+			let conjuction r1 r2 = 
+   				let open HPN in
+				let g is_empty inter acc f =
+          				match acc with
+            				| None ->
+            				  None
+            				| Some z ->
+              				let pn = inter (Field.get f x) (Field.get f y) in
+              				if is_empty pn then None
+              				else Some (Field.fset f z pn) in
+        			Fields.fold
+          			~init:(Some any)
+          			~location:PNL.(g is_empty inter)
+          			~ethSrc:PN48.(g is_empty inter)
+          			~ethDst:PN48.(g is_empty inter)
+          			~vlan:PN16.(g is_empty inter)
+          			~vlanPcp:PN8.(g is_empty inter)
+          			~ethType:PN16.(g is_empty inter)
+          			~ipProto:PN8.(g is_empty inter)
+          			~ipSrc:PNIp.(g is_empty inter)
+          			~ipDst:PNIp.(g is_empty inter)
+          			~tcpSrcPort:PN16.(g is_empty inter)
+          			~tcpDstPort:PN16.(g is_empty inter)
+				in
+			let lf r1 r2 = conjuction r1 (Pattern.neg r2) in
+			let rt r1 r2 = conjuction r2 (Pattern.neg r1) in
+			let bo r1 r2 = conjuction r1 r2 in
+
+			let conjuction_act s1 s2 = 
+				Action.seq s1 s2
+				in
+			let lf_act s1 s2 = s1 in
+			let rt_act s1 s2 = s2 in
+			let bo_act s1 s2 = conjuction_act s1 s2 in
+			let r = Map.fold p#get_m
 				~init:Map.empty
 				~f(fun ~key:r1 ~data:s1 acc->
 				Map.fold q
 					~init:acc
 					~f(fun ~key:r2 ~data:s2 acc->
-					match r1 r2 with
-					|None->
+					match par r1 r2 with
+					|false->
 					acc
-					|Some r1_r2 ->
-					
+					|true ->
+					son#insert (lf r1 r2) (lf_act s1 s2);
+					son#insert (rt r1 r2) (rt_act s1 s2);
+					son#insert (bo r1 r2) (bo_act s1 s2)
+				in
+			r
 			(*for i = 0 to lena - 1 do
 				for j = 0 to lenb - 1 do
 					(*Map.find p.m i Map.find q.m j*)
@@ -859,19 +904,15 @@ struct
 					
 				done;
 			done;*)
-		in
 		let rebuild_relation s = 
 			(*For each vertex in A*B, build relations from their oriegon's father*)
+			s
 			in
 		let r = 
-			rebuild_ralation produce_son fa;
-			
-		in
-		(*	
-		*)
+			rebuild_ralation produce_son
+			in
 		r
-end
-
+	end
 module Composer = struct
 	let dags = ref Map.empty;
 	let dag_num = ref 0;
@@ -885,12 +926,17 @@ module Composer = struct
 	let rec par_compose p q : t = 
 		match (Map.find !dags p) (Map.find !dags q) with
 		|(None, None)->
-		|(Node, Some b)->
-		|(Some a, Node)->
+		par_dag_compose (Dag.create p) (Dag.create q)
+		|(None, Some b)->
+		par_dag_compose (Dag.create p) b
+		|(Some a, None)->
+		par_dag_compose a (Dag.create q)
 		|(Some a, Some b)->
-			par_dag_compose a b in
+		par_dag_compose a b 
+		in
 	let par_dag_compose p q =
-		Dag.par_compose p q in
+		Dag.par_compose p q 
+		in
 (*	
     let insert (pattern,action) =
 	(*
