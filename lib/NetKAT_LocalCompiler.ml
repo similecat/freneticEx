@@ -798,11 +798,19 @@ class graph =
 		val mutable edges = List.empty
 		val mutable m = Int.Map.empty
 		val mutable map = Pattern.Map.emtpy
+		val mutable mmap = Pattern.Map.emtpy
 		method get_num = num(*dag num*)
 		method get_m = m
+		method get_mm = mmap
 		method get_edge_num = List.length edges
 		method add_edge a b = {st:a;ed:b}::edges
 		method insert k v = map <- (Pattern.Map.add map k v)
+		method insert_son p l = mmap <- (
+			match Pattern.Map.find p with
+			|None->
+			Pattern.Map.add mmap p (l::[])
+			|Some x->
+			Pattern.Map.add mmap p (l::x))
 		(*insert patterns into a new dag.*) 
 	end
 
@@ -890,7 +898,7 @@ module Dag =
 					|true ->
 					son#insert (lf r1 r2) (lf_act s1 s2);
 					son#insert (rt r1 r2) (rt_act s1 s2);
-					son#insert (bo r1 r2) (bo_act s1 s2)
+					son#insert (bo r1 r2) (bo_act s1 s2)))
 				in
 			r
 			(*for i = 0 to lena - 1 do
@@ -904,9 +912,35 @@ module Dag =
 					
 				done;
 			done;*)
+		let tp r s = Lefts in(*Return the type of the node:Lefts,Rights,Boths;*)
 		let rebuild_relation s = 
 			(*For each vertex in A*B, build relations from their oriegon's father*)
-			s
+			let lfather r1 =
+				r1
+				in 
+			let rfather r1 =
+				r1
+				in
+			let verify r1 r2 =
+				match Pattern.seq r1 r2 with
+					|None -> false
+					|Some x -> true
+				in
+			let rec relation r1 fa=
+				List.map (fun x -> 
+					match verify r1 x with
+					|false->
+					None
+					|true->
+					s.add_edge r1 x) fa
+				in
+			let r = Pattern.Map.fold s
+				~init:Pattern.Map.empty
+				~f(fun ~key:r1 ~data:s1 acc ->
+				relation r1 (lfather r1);
+				relation r1 (rfather r1)
+				)
+			r
 			in
 		let r = 
 			rebuild_ralation produce_son
